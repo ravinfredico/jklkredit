@@ -1,14 +1,33 @@
 <?php
 declare(strict_types=1);
 
+$requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
+
 // Let the PHP dev server serve static files from public/ directly.
-if (PHP_SAPI === 'cli-server' && is_file(__DIR__ . parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH))) {
+if (PHP_SAPI === 'cli-server' && !defined('VIA_API_ENTRY') && is_file(__DIR__ . $requestPath)) {
     return false;
 }
 
-session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
-session_start();
+// On Vercel every request reaches this script, so serve CSS and fonts here.
+if (str_starts_with($requestPath, '/assets/')) {
+    $file = realpath(__DIR__ . $requestPath);
+    if ($file && str_starts_with($file, __DIR__ . '/assets/') && is_file($file)) {
+        $types = ['css' => 'text/css', 'ttf' => 'font/ttf', 'txt' => 'text/plain', 'png' => 'image/png'];
+        header('Content-Type: ' . ($types[pathinfo($file, PATHINFO_EXTENSION)] ?? 'application/octet-stream'));
+        header('Cache-Control: public, max-age=86400');
+        readfile($file);
+        return;
+    }
+    http_response_code(404);
+    return;
+}
+
 require dirname(__DIR__) . '/src/bootstrap.php';
+ensure_installed();
+session_set_save_handler(new DbSessionHandler(), true);
+$https = ($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => $https]);
+session_start();
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/', '/') ?: '/';
@@ -168,12 +187,11 @@ function route(string $method, string $path): void
             render('error', ['title' => 'Dokumen tidak ditemukan', 'message' => 'Dokumen ini tidak ada atau tidak bisa Anda buka.']);
             return;
         }
-        $file = storage_path($doc['stored_path']);
-        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        header('Content-Type: ' . (UPLOAD_TYPES[$ext] ?? 'application/octet-stream'));
+        header('Content-Type: ' . (in_array($doc['mime'], UPLOAD_TYPES, true) ? $doc['mime'] : 'application/octet-stream'));
         header('Content-Disposition: inline; filename="' . preg_replace('/[^\w.\-]/', '_', $doc['original_name']) . '"');
         header('X-Content-Type-Options: nosniff');
-        readfile($file);
+        header('Cache-Control: private, no-store');
+        echo base64_decode($doc['content_b64']);
         return;
     }
 

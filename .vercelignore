@@ -1,0 +1,6 @@
+storage/database.sqlite
+storage/uploads
+tests
+Dockerfile
+docker-entrypoint.sh
+.dockerignore

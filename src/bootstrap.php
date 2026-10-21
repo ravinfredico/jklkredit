@@ -5,7 +5,7 @@ define('ROOT', dirname(__DIR__));
 date_default_timezone_set('Asia/Jakarta');
 
 require ROOT . '/lib/fpdf/fpdf.php';
-foreach (['db', 'auth', 'format', 'calc', 'validation', 'workflow', 'documents', 'view'] as $file) {
+foreach (['db', 'auth', 'format', 'calc', 'validation', 'workflow', 'documents', 'view', 'install'] as $file) {
     require ROOT . "/src/$file.php";
 }
 

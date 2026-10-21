@@ -92,7 +92,8 @@ CREATE TABLE application_documents (
   application_id INT NOT NULL,
   doc_type ENUM('KTP','KK','BUKTI_TANDA_JADI','KONTRAK','PO','KONTRAK_SIGNED') NOT NULL,
   original_name VARCHAR(150) NOT NULL,
-  stored_path VARCHAR(255) NOT NULL,
+  mime VARCHAR(40) NOT NULL,
+  content_b64 LONGTEXT NOT NULL,
   uploaded_by INT NOT NULL,
   uploaded_at DATETIME NOT NULL,
   CONSTRAINT fk_doc_app FOREIGN KEY (application_id) REFERENCES loan_applications(id) ON DELETE CASCADE,
@@ -127,4 +128,10 @@ CREATE TABLE status_histories (
 CREATE TABLE parameters (
   name VARCHAR(40) PRIMARY KEY,
   value VARCHAR(100) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE sessions (
+  id VARCHAR(128) PRIMARY KEY,
+  data MEDIUMTEXT NOT NULL,
+  updated_at INT NOT NULL
 ) ENGINE=InnoDB;

@@ -1,17 +1,21 @@
 <?php
 declare(strict_types=1);
 
-/** Files live in storage/, outside the public web root, and are only served through /documents/{id}. */
-function storage_path(string $relative): string
-{
-    $base = getenv('STORAGE_DIR') ?: ROOT . '/storage';
-    return $base . '/' . ltrim($relative, '/');
-}
-
+/**
+ * Documents are stored in the database (base64), never in the public web root,
+ * and are only served through /documents/{id} after an access check.
+ * Keeping them in the database also makes them survive on serverless hosts.
+ */
 function documents(int $appId): array
 {
-    return q('SELECT d.*, u.name AS uploader FROM application_documents d JOIN users u ON u.id = d.uploaded_by
+    return q('SELECT d.id, d.application_id, d.doc_type, d.original_name, d.mime, d.uploaded_at, u.name AS uploader
+              FROM application_documents d JOIN users u ON u.id = d.uploaded_by
               WHERE d.application_id = ? ORDER BY d.id', [$appId])->fetchAll();
+}
+
+function document_bytes(int $docId): string
+{
+    return base64_decode((string) q('SELECT content_b64 FROM application_documents WHERE id = ?', [$docId])->fetchColumn());
 }
 
 function has_document(int $appId, string $type): bool
@@ -39,21 +43,19 @@ function uploadable_types(array $user, array $app): array
 
 function store_document(int $appId, array $user, string $type, string $sourcePath, string $originalName, bool $moveUpload = true): void
 {
-    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION)) ?: 'pdf';
-    $relative = "uploads/$appId/" . strtolower($type) . '-' . bin2hex(random_bytes(6)) . ".$ext";
-    $target = storage_path($relative);
-    @mkdir(dirname($target), 0750, true);
-    $ok = $moveUpload ? move_uploaded_file($sourcePath, $target) : copy($sourcePath, $target);
-    if (!$ok) {
+    if ($moveUpload && !is_uploaded_file($sourcePath)) {
+        throw new DomainError('File gagal diunggah. Coba lagi.');
+    }
+    $bytes = file_get_contents($sourcePath);
+    if ($bytes === false) {
         throw new DomainError('File gagal disimpan. Coba lagi.');
     }
-    // One current file per type: replacing an upload removes the old row and file.
-    foreach (q('SELECT id, stored_path FROM application_documents WHERE application_id = ? AND doc_type = ?', [$appId, $type])->fetchAll() as $old) {
-        @unlink(storage_path($old['stored_path']));
-        q('DELETE FROM application_documents WHERE id = ?', [$old['id']]);
-    }
-    q('INSERT INTO application_documents (application_id, doc_type, original_name, stored_path, uploaded_by, uploaded_at)
-       VALUES (?, ?, ?, ?, ?, ?)', [$appId, $type, mb_substr($originalName, 0, 150), $relative, $user['id'], now()]);
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    $mime = UPLOAD_TYPES[$ext] ?? 'application/pdf';
+    // One current file per type: replacing an upload removes the old one.
+    q('DELETE FROM application_documents WHERE application_id = ? AND doc_type = ?', [$appId, $type]);
+    q('INSERT INTO application_documents (application_id, doc_type, original_name, mime, content_b64, uploaded_by, uploaded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)', [$appId, $type, mb_substr($originalName, 0, 150), $mime, base64_encode($bytes), $user['id'], now()]);
 }
 
 /** FPDF core fonts are Windows-1252. */

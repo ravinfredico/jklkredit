@@ -6,9 +6,8 @@ declare(strict_types=1);
  * Run: php tests/run.php
  */
 $db = sys_get_temp_dir() . '/jkl-test-' . getmypid() . '.sqlite';
-$storage = sys_get_temp_dir() . '/jkl-test-storage-' . getmypid();
-putenv("DB_DSN=sqlite:$db");
-putenv("STORAGE_DIR=$storage");
+// TEST_DB_DSN (+ DB_USER) runs the suite against an EMPTY MySQL or PostgreSQL database instead.
+putenv('DB_DSN=' . (getenv('TEST_DB_DSN') ?: "sqlite:$db"));
 ob_start();
 require dirname(__DIR__) . '/bin/setup.php';
 ob_end_clean();
@@ -79,7 +78,7 @@ $draftId = save_application($rina, $clean);
 check('draf baru tersimpan dengan angsuran dari server', (int) find_application($draftId)['installment'] === 7_187_500);
 check('submit tanpa dokumen ditolak', refused(fn() => transition($draftId, $rina, 'submit')) !== null);
 foreach (REQUIRED_DOCS as $t) {
-    attach($draftId, $rina, $t);
+    attach_sample($draftId, $rina, $t);
 }
 check('Marketing lain tidak bisa submit draf orang lain', refused(fn() => transition($draftId, $dimas, 'submit')) !== null);
 transition($draftId, $rina, 'submit');
@@ -110,11 +109,11 @@ check('lock optimistis: versi berubah membuat update gagal', refused(function ()
 transition($draftId, $sari, 'generate_docs');
 check('kontrak dan PO dibuat', has_document($draftId, 'KONTRAK') && has_document($draftId, 'PO')
     && (bool) q('SELECT 1 FROM purchase_orders WHERE application_id = ?', [$draftId])->fetchColumn());
-check('PDF kontrak benar-benar PDF', str_starts_with((string) file_get_contents(storage_path(
-    q("SELECT stored_path FROM application_documents WHERE application_id = ? AND doc_type = 'KONTRAK'", [$draftId])->fetchColumn()
-)), '%PDF'));
+check('PDF kontrak benar-benar PDF', str_starts_with(document_bytes((int)
+    q("SELECT id FROM application_documents WHERE application_id = ? AND doc_type = 'KONTRAK'", [$draftId])->fetchColumn()
+), '%PDF'));
 check('tandai ditandatangani tanpa upload ditolak', refused(fn() => transition($draftId, $rina, 'mark_signed')) !== null);
-attach($draftId, $rina, 'KONTRAK_SIGNED');
+attach_sample($draftId, $rina, 'KONTRAK_SIGNED');
 transition($draftId, $rina, 'mark_signed');
 
 $usedRef = app_by_status('DISBURSED')['disbursement_ref'];
@@ -137,6 +136,5 @@ transition((int) $rejected['id'], $rina, 'revise');
 check('pengajuan ditolak bisa direvisi kembali ke draf', find_application((int) $rejected['id'])['status'] === 'DRAFT');
 
 @unlink($db);
-exec('rm -rf ' . escapeshellarg($storage));
 echo "\n$passed lulus, $failed gagal\n";
 exit($failed ? 1 : 0);

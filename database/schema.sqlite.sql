@@ -86,7 +86,8 @@ CREATE TABLE application_documents (
   doc_type VARCHAR(20) NOT NULL
     CHECK (doc_type IN ('KTP','KK','BUKTI_TANDA_JADI','KONTRAK','PO','KONTRAK_SIGNED')),
   original_name VARCHAR(150) NOT NULL,
-  stored_path VARCHAR(255) NOT NULL,
+  mime VARCHAR(40) NOT NULL,
+  content_b64 TEXT NOT NULL,
   uploaded_by INTEGER NOT NULL REFERENCES users(id),
   uploaded_at DATETIME NOT NULL
 );
@@ -115,4 +116,10 @@ CREATE INDEX ix_hist_app ON status_histories(application_id);
 CREATE TABLE parameters (
   name VARCHAR(40) PRIMARY KEY,
   value VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE sessions (
+  id VARCHAR(128) PRIMARY KEY,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
 );
